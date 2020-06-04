@@ -12,12 +12,12 @@ namespace WorldGeneration
         /// <summary>
         /// The allocator for the counter
         /// </summary>
-        private Allocator allocator;
+        private readonly Allocator allocator;
 
         /// <summary>
         /// The pointer to the value
         /// </summary>
-        [NativeDisableUnsafePtrRestriction] private int* _counter;
+        [NativeDisableUnsafePtrRestriction] private readonly int* _counter;
 
         /// <summary>
         /// The counter's value
@@ -65,18 +65,18 @@ namespace WorldGeneration
                 throw new NullReferenceException(nameof(target) + " is null");
             }
 
-            int nativeArrayLength = source.Length;
+            var nativeArrayLength = source.Length;
             if (target.Length < nativeArrayLength)
             {
                 throw new IndexOutOfRangeException(nameof(target) + " is shorter than " + nameof(source));
             }
 
-            int byteLength = source.Length * Marshal.SizeOf(default(T));
-            void* managedBuffer = UnsafeUtility.AddressOf(ref target[0]);
-            void* nativeBuffer = source.GetUnsafePtr();
+            var byteLength = source.Length * Marshal.SizeOf(default(T));
+            var managedBuffer = UnsafeUtility.AddressOf(ref target[0]);
+            var nativeBuffer = source.GetUnsafePtr();
             Buffer.MemoryCopy(nativeBuffer, managedBuffer, byteLength, byteLength);
         }
-        public static int3 FloorToMultipleOfX(this float3 n, int x)
+        public static int3 FloorToMultipleOfX(this int3 n, int x)
         {
             return (int3)(math.floor(n / x) * x);
         }
