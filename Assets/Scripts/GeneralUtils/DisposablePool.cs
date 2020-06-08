@@ -1,8 +1,9 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 
-namespace SkywardRay.Utility {
+namespace GeneralUtils {
 
-public class Pool<TItem> {
+public class DisposablePool<TItem> : IDisposable where TItem : IDisposable {
 
     /// <summary>
     /// Use this delegate to specify how a new item should be created
@@ -16,7 +17,7 @@ public class Pool<TItem> {
 
     private readonly Queue<TItem> items;
 
-    public Pool (int initialCapacity = 200) {
+    public DisposablePool (int initialCapacity = 200) {
         items = new Queue<TItem>(initialCapacity);
     }
 
@@ -24,7 +25,7 @@ public class Pool<TItem> {
         items.Enqueue(item);
     }
 
-    public TItem GetItem (NewItem newItem, ResetItem resetItem) {
+    public TItem GetItem (NewItem newItem, ResetItem resetItem = null) {
         TItem item;
 
         if (items.Count > 0) {
@@ -34,9 +35,15 @@ public class Pool<TItem> {
             item = newItem.Invoke();
         }
         
-        resetItem.Invoke(ref item);
+        resetItem?.Invoke(ref item);
         
         return item;
+    }
+
+    public void Dispose () {
+        foreach (var item in items) {
+            item.Dispose();
+        }
     }
 
 }

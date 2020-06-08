@@ -1,6 +1,6 @@
 using Unity.Mathematics;
 
-namespace WorldGeneration {
+namespace TerrainGeneration.TerrainUtils {
 
 //Tables used for marching cubes. Taken from https://github.com/Eldemarkki/Marching-Cubes-Terrain
 internal static class MarchingCubesTables {

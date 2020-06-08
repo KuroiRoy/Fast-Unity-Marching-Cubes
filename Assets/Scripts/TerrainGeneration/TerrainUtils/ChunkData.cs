@@ -1,4 +1,5 @@
 ﻿using System;
+using TerrainGeneration.Jobs;
 using Unity.Collections;
 using Unity.Mathematics;
 using UnityEngine;
@@ -77,7 +78,7 @@ public class ChunkData : MonoBehaviour {
             ChunkUpdate();
         }
 
-        WorldBase.currentChunks.Add((int3)(float3)transform.position, this);
+        WorldBase.currentChunks.Add((int3) (float3) transform.position, this);
     }
 
     private void OnDisable () {
@@ -90,9 +91,9 @@ public class ChunkData : MonoBehaviour {
                 position = pos,
                 noiseMap = new float[noiseMap.Length],
             };
-            
+
             noiseMap.CopyTo(saveData.noiseMap);
-            
+
             ChunkSaveData.Save(saveData);
         }
 
@@ -136,13 +137,13 @@ public class ChunkData : MonoBehaviour {
         filter.sharedMesh = myMesh;
 
         desc.topology = MeshTopology.Triangles;
-        
+
         ChunkUpdate();
     }
 
     private void ChunkUpdate () {
         var loadedData = ChunkSaveData.Load("test", pos);
-        
+
         JobHandle? generateHandle = null;
         if (loadedData == null) {
             generateHandle = GenerateChunk();
@@ -150,7 +151,7 @@ public class ChunkData : MonoBehaviour {
         else {
             noiseMap.CopyFrom(loadedData.noiseMap);
         }
-        
+
         MarchChunk(generateHandle);
     }
 
@@ -173,10 +174,9 @@ public class ChunkData : MonoBehaviour {
 
             myMesh.RecalculateNormals();
             filter.sharedMesh = myMesh;
+            
             //Start collider baking
-            var colliderJob = new ChunkColliderBakeJob() {
-                meshId = myMesh.GetInstanceID()
-            };
+            var colliderJob = new ColliderBakeJob {batchSize = 1, meshIDs = {[0] = myMesh.GetInstanceID()}};
             colliderHandle = colliderJob.Schedule();
             meshBaking = true;
         }
@@ -206,9 +206,9 @@ public class ChunkData : MonoBehaviour {
             size = size + 1
             //pos = WorldSetup.positions
         };
-        
+
         noiseJob.Construct();
-        
+
         return noiseJob.Schedule((size + 1) * (size + 1) * (size + 1), 64);
     }
 
@@ -220,11 +220,11 @@ public class ChunkData : MonoBehaviour {
             densities = noiseMap,
             isolevel = 0f,
             chunkSize = size,
-            triangles = indexes,
-            vertices = buffer,
+            triangleIndexBuffer = indexes,
+            vertexBuffer = buffer,
             counter = _counter
         };
-        
+
         marchingJob.Construct();
 
         myHandle = noiseHandle != null ? marchingJob.Schedule(arraySize, 32, noiseHandle.Value) : marchingJob.Schedule(arraySize, 32);
@@ -247,8 +247,8 @@ public class ChunkData : MonoBehaviour {
             densities = noiseMap,
             isolevel = 0f,
             chunkSize = size,
-            triangles = indexes,
-            vertices = buffer,
+            triangleIndexBuffer = indexes,
+            vertexBuffer = buffer,
             counter = _counter
         };
         var marchinJob = marchingJob.Schedule(size * size * size, 32, handl);

@@ -1,15 +1,17 @@
+using System;
 using SkywardRay;
 using SkywardRay.Utility;
+using TerrainGeneration.TerrainUtils;
 using Unity.Burst;
 using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 
-namespace WorldGeneration {
+namespace TerrainGeneration.Jobs {
 
 //Calculate noise in jobs
 [BurstCompile]
-public struct NoiseJob : IJobParallelFor, IConstructableJob, IDisposableJob {
+public struct NoiseJob : IJobParallelFor, IConstructable, IDisposable {
 
     [ReadOnly] public float surfaceLevel;
     [ReadOnly] public float3 offset;
@@ -25,7 +27,7 @@ public struct NoiseJob : IJobParallelFor, IConstructableJob, IDisposableJob {
     /// <summary>
     /// The amount of positive or negative densities per side
     /// </summary>
-    [NativeDisableParallelForRestriction]
+    [NativeDisableParallelForRestriction] 
     public NativeArray<int> signTrackers;
 
     public void Construct () {
@@ -33,15 +35,15 @@ public struct NoiseJob : IJobParallelFor, IConstructableJob, IDisposableJob {
     }
 
     public void Dispose () {
-        noiseMap.Dispose();
+        signTrackers.Dispose();
     }
 
     public void Execute (int index) {
         var positionInChunk = new int3(index / (size * size), index / size % size, index % size);
         var density = FinalNoise(positionInChunk);
-        
+
         TrackSign(positionInChunk, density);
-                
+
         noiseMap[index] = density;
     }
 
@@ -97,14 +99,16 @@ public struct NoiseJob : IJobParallelFor, IConstructableJob, IDisposableJob {
 
     private float PerlinNoise3DSnake (float3 pos) {
         float total = 0;
-        var currentAmplitude = amplitude;
-        var currentFrequency = frequency * 0.5f;
+        var currentAmplitude = amplitude * 0.5f;
+        var currentFrequency = frequency * 8.0f;
         for (var i = 0; i < octaves; i++) {
             total += noise.snoise(pos * currentFrequency) * currentAmplitude;
 
             currentAmplitude *= 2;
             currentFrequency *= 0.5f;
         }
+
+        total *= noise.snoise(pos * frequency * 0.05f);
 
         return total;
     }

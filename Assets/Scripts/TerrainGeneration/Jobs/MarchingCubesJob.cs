@@ -1,16 +1,38 @@
+using System;
 using System.Runtime.CompilerServices;
+using TerrainGeneration.TerrainUtils;
 using Unity.Burst;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.Jobs;
 using Unity.Mathematics;
 using UnityEngine;
+using WorldGeneration;
 
-namespace WorldGeneration {
+namespace TerrainGeneration.Jobs {
 
 //Marching cubes job from https://github.com/Eldemarkki/Marching-Cubes-Terrain
 [BurstCompile]
-public struct MarchingCubesJob : IJobParallelFor, IConstructableJob, IDisposableJob {
+public struct MarchingCubesJob : IJobParallelFor, IConstructable, IDisposable {
+
+    private const int MAXIMUM_AMOUNT_OF_TRIANGLES_PER_VOXEL = 5;
+    private const int VERTICES_PER_TRIANGLE = 3;
+
+    public static NativeArray<Vector3> CreateVertexBuffer (int chunkSize) {
+        return new NativeArray<Vector3>(
+            chunkSize.Pow(3) * VERTICES_PER_TRIANGLE * MAXIMUM_AMOUNT_OF_TRIANGLES_PER_VOXEL,
+            Allocator.Persistent,
+            NativeArrayOptions.UninitializedMemory
+        );
+    }
+
+    public static NativeArray<int> CreateTriangleIndexBuffer (int chunkSize) {
+        return new NativeArray<int>(
+            chunkSize.Pow(3) * VERTICES_PER_TRIANGLE * MAXIMUM_AMOUNT_OF_TRIANGLES_PER_VOXEL, 
+            Allocator.Persistent, 
+            NativeArrayOptions.UninitializedMemory
+        );
+    }
 
     /// <summary>
     /// The densities to generate the mesh off of
@@ -38,23 +60,24 @@ public struct MarchingCubesJob : IJobParallelFor, IConstructableJob, IDisposable
     /// The generated vertices
     /// </summary>
     [NativeDisableParallelForRestriction, WriteOnly]
-    public NativeArray<Vector3> vertices;
+    public NativeArray<Vector3> vertexBuffer;
 
     /// <summary>
     /// The generated triangles
     /// </summary>
     [NativeDisableParallelForRestriction, WriteOnly]
-    public NativeArray<int> triangles;
+    public NativeArray<int> triangleIndexBuffer;
 
     public void Construct () {
         counter = new Counter(Allocator.Persistent);
     }
 
     public void Dispose () {
-        vertices.Dispose();
-        triangles.Dispose();
+        triangleIndexBuffer.Dispose();
+        vertexBuffer.Dispose();
+        counter.Dispose();
     }
-
+    
     /// <summary>
     /// The execute method required by the Unity Job System's IJobParallelFor
     /// </summary>
@@ -85,14 +108,14 @@ public struct MarchingCubesJob : IJobParallelFor, IConstructableJob, IDisposable
         for (var i = 0; MarchingCubesTables.TriangleTable[rowIndex + i] != -1 && i < 15; i += 3) {
             var triangleIndex = counter.Increment() * 3;
 
-            vertices[triangleIndex + 0] = vertexList[MarchingCubesTables.TriangleTable[rowIndex + i + 0]];
-            triangles[triangleIndex + 0] = triangleIndex + 0;
+            vertexBuffer[triangleIndex + 0] = vertexList[MarchingCubesTables.TriangleTable[rowIndex + i + 0]];
+            triangleIndexBuffer[triangleIndex + 0] = triangleIndex + 0;
 
-            vertices[triangleIndex + 1] = vertexList[MarchingCubesTables.TriangleTable[rowIndex + i + 1]];
-            triangles[triangleIndex + 1] = triangleIndex + 1;
+            vertexBuffer[triangleIndex + 1] = vertexList[MarchingCubesTables.TriangleTable[rowIndex + i + 1]];
+            triangleIndexBuffer[triangleIndex + 1] = triangleIndex + 1;
 
-            vertices[triangleIndex + 2] = vertexList[MarchingCubesTables.TriangleTable[rowIndex + i + 2]];
-            triangles[triangleIndex + 2] = triangleIndex + 2;
+            vertexBuffer[triangleIndex + 2] = vertexList[MarchingCubesTables.TriangleTable[rowIndex + i + 2]];
+            triangleIndexBuffer[triangleIndex + 2] = triangleIndex + 2;
         }
     }
 

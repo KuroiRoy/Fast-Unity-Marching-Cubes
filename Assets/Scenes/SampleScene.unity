@@ -353,8 +353,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 27ca3171cd73831459ec6ed02f90fc2d, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  worldSetup: {fileID: 1730994060}
-  deformRadius: 10
+  radius: 5
+  terrain: {fileID: 1730994062}
+  camera: {fileID: 963194227}
 --- !u!850595691 &1398094641
 LightingSettings:
   m_ObjectHideFlags: 0
@@ -485,12 +486,13 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   chunkSize: 32
   voxelSize: 1
+  chunkDrawDistance: 5
   playerTransform: {fileID: 963194228}
   chunkMeshObjectPrefab: {fileID: 5688686567056324017, guid: e0543e6c9c9c54978b929b315c0b7148,
     type: 3}
   noiseSettings:
     surfaceLevel: 0
-    freq: 0.04
+    freq: 0.1
     ampl: 1.5
     oct: 6
     offset: {x: 10, y: 0, z: 10}

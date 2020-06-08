@@ -1,29 +1,49 @@
-﻿using Unity.Mathematics;
+﻿using System;
+using TerrainGeneration.Brushes;
+using TerrainGeneration.TerrainUtils;
 using UnityEngine;
+
+namespace TerrainGeneration {
 
 public class TerrainDeformer : MonoBehaviour {
 
-    public WorldGeneration.WorldBase worldSetup;
-    public float deformRadius;
-    private Camera _camera;
+    [SerializeField] private float radius;
+    [SerializeField] private TestWorld terrain;
+    [SerializeField] private new Camera camera;
 
-    private void Start () {
-        _camera = Camera.main;
-    }
+    private bool didHit;
+    private Vector3 hitPoint;
 
     private void Update () {
-        var ray = _camera.ScreenPointToRay(Input.mousePosition);
+        var ray = camera.ScreenPointToRay(Input.mousePosition);
 
+        didHit = Physics.Raycast(ray, out var hit, float.PositiveInfinity);
+        hitPoint = hit.point;
+        
         if (Input.GetKeyDown(KeyCode.C)) {
-            if (Physics.Raycast(ray, out var hit, 100f)) {
-                worldSetup.ModifyTerrainBallShape((int3) math.floor(hit.point), deformRadius, 1f);
-            }
+            DeformTerrain(BrushOperation.Difference);
         }
         else if (Input.GetKeyDown(KeyCode.F)) {
-            if (Physics.Raycast(ray, out var hit, 100f)) {
-                worldSetup.ModifyTerrainBallShape((int3) math.floor(hit.point), deformRadius, -1f);
-            }
+            DeformTerrain(BrushOperation.Union);
         }
     }
+
+    private void OnDrawGizmos () {
+        if (didHit) {
+            Gizmos.color = Color.yellow;
+            Gizmos.DrawSphere(hitPoint, radius);
+        }
+    }
+
+    private void DeformTerrain (BrushOperation operation) {
+        var brush = new SphereBrush {
+            origin = hitPoint,
+            radius = radius,
+        };
+
+        terrain.DeformTerrain(brush, operation);
+    }
+
+}
 
 }

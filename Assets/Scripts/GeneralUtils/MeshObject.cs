@@ -2,7 +2,7 @@
 using UnityEngine;
 using UnityEngine.Rendering;
 
-namespace SkywardRay {
+namespace GeneralUtils {
 
 [RequireComponent(typeof(MeshFilter), typeof(MeshRenderer))]
 public class MeshObject : MonoBehaviour {
@@ -10,6 +10,8 @@ public class MeshObject : MonoBehaviour {
     [SerializeField] private MeshCollider meshCollider;
     [SerializeField] private MeshFilter meshFilter;
     [SerializeField] private MeshRenderer meshRenderer;
+
+    public int MeshInstanceID => mesh.GetInstanceID();
 
     private bool HasCollider { get; set; }
     
@@ -63,6 +65,11 @@ public class MeshObject : MonoBehaviour {
 
         mesh.bounds = bounds;
         mesh.RecalculateNormals();
+
+        if (HasCollider) {
+            meshCollider.enabled = false;
+            meshCollider.enabled = true;
+        }
     }
 
 }
