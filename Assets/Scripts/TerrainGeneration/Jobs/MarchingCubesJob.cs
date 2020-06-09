@@ -1,4 +1,3 @@
-using System;
 using System.Runtime.CompilerServices;
 using TerrainGeneration.TerrainUtils;
 using Unity.Burst;
@@ -13,7 +12,7 @@ namespace TerrainGeneration.Jobs {
 
 //Marching cubes job from https://github.com/Eldemarkki/Marching-Cubes-Terrain
 [BurstCompile]
-public struct MarchingCubesJob : IJobParallelFor, IConstructable, IDisposable {
+public struct MarchingCubesJob : IJobParallelFor, IMeshDataJob {
 
     private const int MAXIMUM_AMOUNT_OF_TRIANGLES_PER_VOXEL = 5;
     private const int VERTICES_PER_TRIANGLE = 3;
@@ -54,7 +53,7 @@ public struct MarchingCubesJob : IJobParallelFor, IConstructable, IDisposable {
     /// <summary>
     /// The counter to keep track of the triangle index
     /// </summary>
-    [WriteOnly] public Counter counter;
+    [NativeDisableParallelForRestriction, WriteOnly] public Counter vertexCounter;
 
     /// <summary>
     /// The generated vertices
@@ -68,16 +67,6 @@ public struct MarchingCubesJob : IJobParallelFor, IConstructable, IDisposable {
     [NativeDisableParallelForRestriction, WriteOnly]
     public NativeArray<int> triangleIndexBuffer;
 
-    public void Construct () {
-        counter = new Counter(Allocator.Persistent);
-    }
-
-    public void Dispose () {
-        triangleIndexBuffer.Dispose();
-        vertexBuffer.Dispose();
-        counter.Dispose();
-    }
-    
     /// <summary>
     /// The execute method required by the Unity Job System's IJobParallelFor
     /// </summary>
@@ -106,7 +95,7 @@ public struct MarchingCubesJob : IJobParallelFor, IConstructable, IDisposable {
         var rowIndex = 15 * cubeIndex;
 
         for (var i = 0; MarchingCubesTables.TriangleTable[rowIndex + i] != -1 && i < 15; i += 3) {
-            var triangleIndex = counter.Increment() * 3;
+            var triangleIndex = vertexCounter.Increment() * 3;
 
             vertexBuffer[triangleIndex + 0] = vertexList[MarchingCubesTables.TriangleTable[rowIndex + i + 0]];
             triangleIndexBuffer[triangleIndex + 0] = triangleIndex + 0;
@@ -244,6 +233,14 @@ public struct MarchingCubesJob : IJobParallelFor, IConstructable, IDisposable {
         }
 
         return cubeIndex;
+    }
+
+    public NativeArray<Vector3> GetVertexBuffer () {
+        return vertexBuffer;
+    }
+
+    public NativeArray<int> GetTriangleIndexBuffer () {
+        return triangleIndexBuffer;
     }
 
 }

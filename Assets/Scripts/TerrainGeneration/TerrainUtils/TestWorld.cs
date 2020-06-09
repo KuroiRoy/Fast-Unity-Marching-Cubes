@@ -1,22 +1,15 @@
-using System;
 using System.Collections.Generic;
 using GeneralUtils;
 using SkywardRay;
 using SkywardRay.Utility;
 using TerrainGeneration.Brushes;
-using TerrainGeneration.Jobs;
-using Unity.Collections;
-using Unity.Jobs;
 using Unity.Mathematics;
 using UnityEngine;
-using UnityEngine.Rendering;
 using WorldGeneration;
 
 namespace TerrainGeneration.TerrainUtils {
 
 public class TestWorld : MonoBehaviour, IDeformableTerrain {
-
-    private static readonly VertexAttributeDescriptor[] meshVertexLayout = {new VertexAttributeDescriptor(VertexAttribute.Position)};
 
     [SerializeField] private int chunkSize = 32;
     [SerializeField] private float voxelSize = 1;
@@ -26,19 +19,10 @@ public class TestWorld : MonoBehaviour, IDeformableTerrain {
     [SerializeField] private NoiseSettings noiseSettings;
 
     private int chunksWithSignChange;
-    private ColliderBakeJob colliderBakeJob;
-    private JobHandle colliderBakeHandle = default;
-    private bool isColliderBakeJobRunning;
-    private readonly DisposablePool<NativeArray<Vector3>> vertexBufferPool = new DisposablePool<NativeArray<Vector3>>();
-    private readonly DisposablePool<NativeArray<int>> triangleIndexBufferPool = new DisposablePool<NativeArray<int>>();
     private readonly DisposablePool<TerrainChunk> chunkPool = new DisposablePool<TerrainChunk>();
     private readonly Dictionary<ChunkKey, TerrainChunk> chunks = new Dictionary<ChunkKey, TerrainChunk>();
-    private readonly Queue<int> meshBakingQueue = new Queue<int>();
-    private readonly List<(JobHandle handle, Action onJobCompleted)> runningJobs = new List<(JobHandle handle, Action onJobCompleted)>();
-
-    private void Start () {
-        colliderBakeJob.Construct();
-    }
+    private readonly Queue<ChunkKey> chunksToRemove = new Queue<ChunkKey>();
+    private readonly Queue<ChunkKey> chunksToExpandFrom = new Queue<ChunkKey>();
 
     private void Update () {
         if (chunksWithSignChange == 0 && chunks.Count == 0) {
@@ -47,47 +31,69 @@ public class TestWorld : MonoBehaviour, IDeformableTerrain {
     }
 
     private void LateUpdate () {
-        for (var i = 0; i < runningJobs.Count; i++) {
-            var (handle, onJobCompleted) = runningJobs[i];
+        var playerPosition = (float3) playerTransform.position;
+        
+        foreach (var (chunkKey, chunk) in chunks) {
+            chunk.UpdateJobs();
+            
+            if (chunk.hasBeenMarkedForRemoval) {
+                continue;
+            }
+            
+            if (chunk.hasUpdatedSigns) {
+                if (chunk.hasSignChangeOnAnySide) {
+                    chunksToExpandFrom.Enqueue(chunkKey);
+                    
+                    chunksWithSignChange++;
+                }
+                else {
+                    chunksWithSignChange--;
+                }
+            }
+            else if (chunksWithSignChange == 0 && chunk.hasUpdatedDensities) {
+                chunksToExpandFrom.Enqueue(chunkKey);
+            }
 
-            // Check if the job is no longer active
-            if (handle.IsCompleted) {
-                runningJobs.RemoveAt(i);
+            if (!chunk.hasBeenMarkedForRemoval && math.distance(playerPosition, chunk.position) > chunkDrawDistance * 1.5 * chunkSize) {
+                chunk.hasBeenMarkedForRemoval = true;
 
-                // Tell the job system we are done with this job
-                handle.Complete();
+                if (chunk.hasSignChangeOnAnySide) {
+                    chunksWithSignChange--;
+                }
+                
+                chunksToRemove.Enqueue(chunkKey);
+            }
 
-                // Send notice of the job's completion
-                onJobCompleted.Invoke();
+            chunk.hasUpdatedDensities = false;
+            chunk.hasUpdatedSigns = false;
+        }
 
-                i--;
+        var chunksToRemoveCount = chunksToRemove.Count;
+        var chunksToExpandFromCount = chunksToExpandFrom.Count;
+
+        for (var i = 0; i < chunksToRemoveCount; i++) {
+            var chunkKey = chunksToRemove.Peek();
+            var chunk = chunks[chunkKey];
+
+            if (chunk.runningJobs == 0) {
+                chunks.Remove(chunkKey);
+                chunksToRemove.Dequeue();
             }
         }
 
-        if (isColliderBakeJobRunning && colliderBakeHandle.IsCompleted) {
-            isColliderBakeJobRunning = false;
-
-            colliderBakeHandle.Complete();
-        }
-
-        if (!isColliderBakeJobRunning && meshBakingQueue.Count > 0) {
-            colliderBakeJob.batchSize = Mathf.Min(ColliderBakeJob.MESHES_TO_BAKE_PER_JOB, meshBakingQueue.Count);
-
-            for (var bakeIndex = 0; bakeIndex < colliderBakeJob.batchSize; bakeIndex++) {
-                colliderBakeJob.meshIDs[bakeIndex] = meshBakingQueue.Dequeue();
-            }
-
-            // colliderBakeHandle = colliderBakeJob.Schedule();
-            isColliderBakeJobRunning = true;
+        for (var i = 0; i < chunksToExpandFromCount; i++) {
+            var chunkKey = chunksToExpandFrom.Dequeue();
+            
+            ExpandTerrainFromChunk(chunks[chunkKey]);
         }
     }
 
     private void OnApplicationQuit () {
-        colliderBakeJob.Dispose();
-
         foreach (var chunk in chunks.Values) {
             chunk.Dispose();
         }
+        
+        chunkPool.Dispose();
     }
 
     public void DeformTerrain (IBrush brush, BrushOperation operation) {
@@ -119,8 +125,8 @@ public class TestWorld : MonoBehaviour, IDeformableTerrain {
             for (var y = minIndex.x; y <= maxIndex.x; y++) {
                 for (var z = minIndex.x; z <= maxIndex.x; z++) {
                     var chunk = GetOrCreateChunkByKey(new ChunkKey {origin = math.int3(x, y, z)});
-
-                    ScheduleApplyBrushJob(chunk, brush, operation);
+                    
+                    chunk.ScheduleApplyBrushJob(brush, operation);
                 }
             }
         }
@@ -138,7 +144,8 @@ public class TestWorld : MonoBehaviour, IDeformableTerrain {
         chunk.meshObject.transform.position = chunk.position;
 
         chunks.Add(key, chunk);
-        ScheduleNoiseJob(chunk);
+        
+        chunk.ScheduleGenerateDensitiesJob(noiseSettings);
 
         // Fix neighbours
         foreach (var (sideIndex, side) in EnumUtil<CubeSide>.valuePairs) {
@@ -159,10 +166,7 @@ public class TestWorld : MonoBehaviour, IDeformableTerrain {
     }
 
     private TerrainChunk PoolCallbackCreateNewChunk () {
-        return new TerrainChunk {
-            meshObject = Instantiate(chunkMeshObjectPrefab, transform),
-            densityMap = new NativeArray<float>((chunkSize + 1).Pow(3), Allocator.Persistent, NativeArrayOptions.UninitializedMemory),
-        };
+        return new TerrainChunk(chunkSize, voxelSize, Instantiate(chunkMeshObjectPrefab, transform));
     }
 
     private static void PoolCallbackResetChunk (ref TerrainChunk item) {
@@ -212,125 +216,6 @@ public class TestWorld : MonoBehaviour, IDeformableTerrain {
 
         return new ChunkKey {origin = (int3) math.floor(chunkOrigin)};
     }
-
-    #region Jobs
-
-    private void ScheduleApplyBrushJob (TerrainChunk chunk, IBrush brush, BrushOperation brushOperation) {
-        var job = new ApplyBrushJob<SphereBrush> {
-            brush = (SphereBrush) brush,
-            operation = brushOperation,
-            noiseMap = chunk.densityMap,
-            size = chunkSize + 1,
-            chunkPosition = chunk.position,
-        };
-        job.Construct();
-
-        if (!chunk.jobHandles.densityMapHandle.IsCompleted) {
-            chunk.jobHandles.densityMapHandle.Complete();
-        }
-
-        var handle = job.Schedule((chunkSize + 1).Pow(3), 64, chunk.jobHandles.newestJobHandle);
-
-        runningJobs.Add((handle, OnJobCompleted));
-
-        chunk.jobHandles.newestJobHandle = handle;
-
-        ScheduleMarchingCubesJob(chunk);
-
-        void OnJobCompleted () {
-            // The length and width of each side
-            var dataPointsPerSide = (chunkSize + 1) * (chunkSize + 1);
-
-            foreach (var side in EnumUtil<CubeSide>.intValues) {
-                chunk.hasSignChangeOnSide[side] = math.abs(job.signTrackers[side]) != dataPointsPerSide;
-            }
-
-            job.Dispose();
-        }
-    }
-
-    private void ScheduleNoiseJob (TerrainChunk chunk) {
-        var job = new NoiseJob {
-            noiseMap = chunk.densityMap,
-            surfaceLevel = noiseSettings.surfaceLevel,
-            frequency = noiseSettings.freq,
-            amplitude = noiseSettings.ampl,
-            octaves = noiseSettings.oct,
-            offset = chunk.position,
-            size = chunkSize + 1
-        };
-        job.Construct();
-
-        var handle = job.Schedule((chunkSize + 1).Pow(3), 64, chunk.newestJobHandle);
-
-        runningJobs.Add((handle, OnJobCompleted));
-
-        chunk.newestJobHandle = handle;
-
-        ScheduleMarchingCubesJob(chunk);
-
-        void OnJobCompleted () {
-            // The length and width of each side
-            var dataPointsPerSide = (chunkSize + 1) * (chunkSize + 1);
-            var anySignChange = false;
-
-            foreach (var side in EnumUtil<CubeSide>.intValues) {
-                var hasSignChange = math.abs(job.signTrackers[side]) != dataPointsPerSide;
-
-                anySignChange = anySignChange || hasSignChange;
-
-                chunk.hasSignChangeOnSide[side] = hasSignChange;
-            }
-
-            if (anySignChange || chunksWithSignChange == 0) {
-                ExpandTerrainFromChunk(chunk);
-            }
-
-            job.Dispose();
-        }
-    }
-
-    private void ScheduleMarchingCubesJob (TerrainChunk chunk) {
-        var job = new MarchingCubesJob {
-            densities = chunk.densityMap,
-            isolevel = 0f,
-            chunkSize = chunkSize,
-            vertexBuffer = vertexBufferPool.GetItem(CreateVertexBuffer),
-            triangleIndexBuffer = triangleIndexBufferPool.GetItem(CreateTriangleIndexBuffer),
-        };
-        job.Construct();
-
-        var handle = job.Schedule(chunkSize.Pow(3), 64, chunk.newestJobHandle);
-
-        runningJobs.Add((handle, OnJobCompleted));
-
-        chunk.newestJobHandle = handle;
-
-        void OnJobCompleted () {
-            var vertexCount = job.counter.Count * 3;
-
-            if (vertexCount <= 0) return;
-
-            var center = chunkSize / 2;
-            var bounds = new Bounds(math.float3(center), math.float3(chunkSize * voxelSize));
-
-            chunk.meshObject.FillMesh(vertexCount, vertexCount, job.vertexBuffer, job.triangleIndexBuffer, bounds, meshVertexLayout);
-
-            chunksWithSignChange++;
-
-            meshBakingQueue.Enqueue(chunk.meshObject.MeshInstanceID);
-
-            // vertexBufferPool.AddItem(job.vertexBuffer);
-            // triangleIndexBufferPool.AddItem(job.triangleIndexBuffer);
-
-            job.Dispose();
-        }
-
-        NativeArray<Vector3> CreateVertexBuffer () => MarchingCubesJob.CreateVertexBuffer(chunkSize);
-        NativeArray<int> CreateTriangleIndexBuffer () => MarchingCubesJob.CreateTriangleIndexBuffer(chunkSize);
-    }
-
-    #endregion
 
 }
 

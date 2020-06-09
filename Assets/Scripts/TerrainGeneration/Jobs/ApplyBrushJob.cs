@@ -12,10 +12,10 @@ namespace TerrainGeneration.Jobs {
 
 //Chunk noisemap update job, in a ball shape. Could implement more complex logic for this as well.
 [BurstCompile]
-public struct ApplyBrushJob<TBrush> : IJobParallelFor, IConstructable, IDisposable where TBrush : struct, IBrush {
+public struct ApplyBrushJob<TBrush> : IJobParallelFor, IDensityJob where TBrush : struct, IBrush {
 
     //Chunk's noisemap to edit.
-    public NativeArray<float> noiseMap;
+    public NativeArray<float> densityMap;
 
     [ReadOnly] public float3 chunkPosition;
 
@@ -38,14 +38,14 @@ public struct ApplyBrushJob<TBrush> : IJobParallelFor, IConstructable, IDisposab
         var distanceToShape = brush.GetDistanceToShape(position);
 
         var newDensity = operation switch {
-            BrushOperation.Union => math.min(noiseMap[index], distanceToShape),
-            BrushOperation.Difference => math.max(noiseMap[index], -distanceToShape),
+            BrushOperation.Union => math.min(densityMap[index], distanceToShape),
+            BrushOperation.Difference => math.max(densityMap[index], -distanceToShape),
             _ => throw new ArgumentOutOfRangeException()
         };
 
         TrackSign(index, newDensity);
 
-        noiseMap[index] = newDensity;
+        densityMap[index] = newDensity;
     }
 
     private void TrackSign (int3 index, float density) {
@@ -76,12 +76,8 @@ public struct ApplyBrushJob<TBrush> : IJobParallelFor, IConstructable, IDisposab
         }
     }
 
-    public void Construct () {
-        signTrackers = new NativeArray<int>(EnumUtil<CubeSide>.length, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
-    }
-
-    public void Dispose () {
-        signTrackers.Dispose();
+    public NativeArray<int> GetSignTrackers () {
+        return signTrackers;
     }
 
 }

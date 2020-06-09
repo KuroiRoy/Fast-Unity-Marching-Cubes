@@ -40,28 +40,17 @@ public class MeshObject : MonoBehaviour {
         }
     }
 
-    // public void SetMesh (MeshDraft meshDraft, bool setCollider = true) {
-    //     CreateMesh();
-    //
-    //     meshDraft.ToMesh(ref mesh);
-    //
-    //     if (setCollider && meshCollider && meshCollider.enabled) {
-    //         meshCollider.enabled = false;
-    //         meshCollider.enabled = true;
-    //     }
-    // }
-
     public void FillMesh (int vertexCount, int indexCount, NativeArray<Vector3> vertices, NativeArray<int> triangles, Bounds bounds, VertexAttributeDescriptor[] meshVertexLayout) {
         mesh.SetVertexBufferParams(vertexCount, meshVertexLayout);
-        mesh.SetVertexBufferData(vertices, 0, 0, vertexCount, 0, MeshUpdateFlags.DontValidateIndices);
+        mesh.SetVertexBufferData(vertices, 0, 0, vertexCount, 0);
         mesh.SetIndexBufferParams(indexCount, IndexFormat.UInt32);
-        mesh.SetIndexBufferData(triangles, 0, 0, vertexCount, MeshUpdateFlags.DontValidateIndices);
+        mesh.SetIndexBufferData(triangles, 0, 0, vertexCount);
 
         var descriptor = new SubMeshDescriptor {
             topology = MeshTopology.Triangles,
             indexCount = indexCount
         };
-        mesh.SetSubMesh(0, descriptor, MeshUpdateFlags.DontValidateIndices);
+        mesh.SetSubMesh(0, descriptor);
 
         mesh.bounds = bounds;
         mesh.RecalculateNormals();

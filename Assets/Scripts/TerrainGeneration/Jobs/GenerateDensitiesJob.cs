@@ -11,7 +11,7 @@ namespace TerrainGeneration.Jobs {
 
 //Calculate noise in jobs
 [BurstCompile]
-public struct NoiseJob : IJobParallelFor, IConstructable, IDisposable {
+public struct GenerateDensitiesJob : IJobParallelFor, IDensityJob {
 
     [ReadOnly] public float surfaceLevel;
     [ReadOnly] public float3 offset;
@@ -29,14 +29,6 @@ public struct NoiseJob : IJobParallelFor, IConstructable, IDisposable {
     /// </summary>
     [NativeDisableParallelForRestriction] 
     public NativeArray<int> signTrackers;
-
-    public void Construct () {
-        signTrackers = new NativeArray<int>(EnumUtil<CubeSide>.length, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
-    }
-
-    public void Dispose () {
-        signTrackers.Dispose();
-    }
 
     public void Execute (int index) {
         var positionInChunk = new int3(index / (size * size), index / size % size, index % size);
@@ -125,6 +117,10 @@ public struct NoiseJob : IJobParallelFor, IConstructable, IDisposable {
         }
 
         return total;
+    }
+
+    public NativeArray<int> GetSignTrackers () {
+        return signTrackers;
     }
 
 }

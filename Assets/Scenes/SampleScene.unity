@@ -426,7 +426,6 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 1730994061}
-  - component: {fileID: 1730994060}
   - component: {fileID: 1730994062}
   m_Layer: 0
   m_Name: World
@@ -435,29 +434,6 @@ GameObject:
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
   m_IsActive: 1
---- !u!114 &1730994060
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1730994059}
-  m_Enabled: 0
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 94e02631dd45ad34a8dece297f85f9f0, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  voxelMaterial: {fileID: 2100000, guid: 27178c7fa1d86eb41b535327d6674cf6, type: 2}
-  chunkPrefab: {fileID: 4062369563302791805, guid: 9e9d80ee6f36225499b17ac62f21d0b5,
-    type: 3}
-  player: {fileID: 963194228}
-  _noiseData:
-    surfaceLevel: -10
-    freq: 0.04
-    ampl: 1.5
-    oct: 6
-    offset: 10
-  chunkDrawDistance: 400
 --- !u!4 &1730994061
 Transform:
   m_ObjectHideFlags: 0
