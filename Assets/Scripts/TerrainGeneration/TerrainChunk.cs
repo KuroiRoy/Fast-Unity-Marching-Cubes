@@ -21,6 +21,7 @@ public class TerrainChunk : IDisposable {
     public float3 position;
     public ChunkKey key;
     public int size;
+    public Bounds bounds;
     public float voxelSize;
     public readonly bool[] hasSignChangeOnSide = new bool[EnumUtil<CubeSide>.length];
     public readonly bool[] hasNeighbourOnSide = new bool[EnumUtil<CubeSide>.length];
@@ -46,6 +47,8 @@ public TerrainChunk (int size, float voxelSize, MeshObject meshObject) {
 }
 
 public void Dispose () {
+    hasBeenMarkedForRemoval = true;
+    
     CompleteRunningJobs();
     
     densityMap.Dispose();
@@ -85,7 +88,7 @@ public void Dispose () {
         if (runningJobs > 0) {
             CompleteRunningJobs();
         }
-
+        
         var job = new ApplyBrushJob<SphereBrush> {
             brush = (SphereBrush) brush,
             operation = brushOperation,
@@ -98,8 +101,6 @@ public void Dispose () {
         jobs.densityJob = job;
         jobs.densityHandle = ScheduleParallelJob((size + 1).Pow(3), job);
         jobs.isDensityJobRunning = true;
-
-        ScheduleSurfaceExtractionJob();
     }
 
     public void ScheduleGenerateDensitiesJob (NoiseSettings noiseSettings) {
@@ -125,13 +126,15 @@ public void Dispose () {
         jobs.densityJob = job;
         jobs.densityHandle = ScheduleParallelJob((size + 1).Pow(3), job);
         jobs.isDensityJobRunning = true;
-
-        ScheduleSurfaceExtractionJob();
     }
 
     private void ScheduleSurfaceExtractionJob () {
         if (hasBeenMarkedForRemoval) {
             return;
+        }
+        
+        if (runningJobs > 0) {
+            CompleteRunningJobs();
         }
 
         vertexCounter.Count = 0;
@@ -210,6 +213,8 @@ public void Dispose () {
         }
 
         hasUpdatedDensities = true;
+
+        ScheduleSurfaceExtractionJob();
     }
 
     private void CompleteSurfaceExtractionJob () {
@@ -223,10 +228,10 @@ public void Dispose () {
         var triangleIndexBuffer = jobs.surfaceExtractionJob.GetTriangleIndexBuffer();
 
         if (vertexCount > 0) {
-            var center = size / 2;
-            var bounds = new Bounds(math.float3(center), math.float3(size * voxelSize));
+            var meshBounds = new Bounds {min = Vector3.zero, max = math.float3(size * voxelSize)};
 
-            meshObject.FillMesh(vertexCount, vertexCount, vertexBuffer, triangleIndexBuffer, bounds, meshVertexLayout);
+            meshObject.FillMesh(vertexCount, vertexCount, vertexBuffer, triangleIndexBuffer, meshBounds, meshVertexLayout);
+            meshObject.gameObject.SetActive(true);
             
             ScheduleColliderBakeJob();
         }

@@ -30,7 +30,7 @@ public class TerrainDeformer : MonoBehaviour {
 
     private void OnDrawGizmos () {
         if (didHit) {
-            Gizmos.color = Color.yellow;
+            Gizmos.color = new Color(1f, 0.92f, 0.02f, 0.53f);
             Gizmos.DrawSphere(hitPoint, radius);
         }
     }

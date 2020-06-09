@@ -32,18 +32,18 @@ public class TestWorld : MonoBehaviour, IDeformableTerrain {
 
     private void LateUpdate () {
         var playerPosition = (float3) playerTransform.position;
-        
+
         foreach (var (chunkKey, chunk) in chunks) {
             chunk.UpdateJobs();
-            
+
             if (chunk.hasBeenMarkedForRemoval) {
                 continue;
             }
-            
+
             if (chunk.hasUpdatedSigns) {
                 if (chunk.hasSignChangeOnAnySide) {
                     chunksToExpandFrom.Enqueue(chunkKey);
-                    
+
                     chunksWithSignChange++;
                 }
                 else {
@@ -60,7 +60,7 @@ public class TestWorld : MonoBehaviour, IDeformableTerrain {
                 if (chunk.hasSignChangeOnAnySide) {
                     chunksWithSignChange--;
                 }
-                
+
                 chunksToRemove.Enqueue(chunkKey);
             }
 
@@ -76,6 +76,8 @@ public class TestWorld : MonoBehaviour, IDeformableTerrain {
             var chunk = chunks[chunkKey];
 
             if (chunk.runningJobs == 0) {
+                chunk.meshObject.gameObject.SetActive(false);
+                
                 chunks.Remove(chunkKey);
                 chunksToRemove.Dequeue();
             }
@@ -83,7 +85,7 @@ public class TestWorld : MonoBehaviour, IDeformableTerrain {
 
         for (var i = 0; i < chunksToExpandFromCount; i++) {
             var chunkKey = chunksToExpandFrom.Dequeue();
-            
+
             ExpandTerrainFromChunk(chunks[chunkKey]);
         }
     }
@@ -92,40 +94,21 @@ public class TestWorld : MonoBehaviour, IDeformableTerrain {
         foreach (var chunk in chunks.Values) {
             chunk.Dispose();
         }
-        
+
         chunkPool.Dispose();
     }
 
     public void DeformTerrain (IBrush brush, BrushOperation operation) {
-        var center = brush.GetCenter();
-        var centerIndex = (int3) math.floor(center / chunkSize);
+        var bounds = brush.GetBounds();
 
-        var minIndex = centerIndex;
-        var maxIndex = centerIndex;
-
-        var c = 0;
-        while (c < 10000) {
-            var minPosition = minIndex * chunkSize;
-            var maxPosition = maxIndex * chunkSize;
-
-            var minChunkDistance = brush.GetDistanceToShape(minPosition);
-            var maxChunkDistance = brush.GetDistanceToShape(maxPosition);
-
-            if (minChunkDistance > chunkSize && maxChunkDistance > chunkSize) {
-                break;
-            }
-
-            minIndex += math.int3(-1, -1, -1);
-            maxIndex += math.int3(1, 1, 1);
-
-            c++;
-        }
-
+        var minIndex = (int3) math.floor(bounds.min / chunkSize);
+        var maxIndex = (int3) math.floor(bounds.max / chunkSize);
+        
         for (var x = minIndex.x; x <= maxIndex.x; x++) {
-            for (var y = minIndex.x; y <= maxIndex.x; y++) {
-                for (var z = minIndex.x; z <= maxIndex.x; z++) {
+            for (var y = minIndex.y; y <= maxIndex.y; y++) {
+                for (var z = minIndex.z; z <= maxIndex.z; z++) {
                     var chunk = GetOrCreateChunkByKey(new ChunkKey {origin = math.int3(x, y, z)});
-                    
+
                     chunk.ScheduleApplyBrushJob(brush, operation);
                 }
             }
@@ -142,9 +125,13 @@ public class TestWorld : MonoBehaviour, IDeformableTerrain {
         chunk.key = key;
         chunk.meshObject.gameObject.name = $"Chunk {key.origin}";
         chunk.meshObject.transform.position = chunk.position;
+        chunk.bounds = new Bounds {
+            min = chunk.position,
+            max = chunk.position + math.float3(chunk.size * chunk.voxelSize)
+        };
 
         chunks.Add(key, chunk);
-        
+
         chunk.ScheduleGenerateDensitiesJob(noiseSettings);
 
         // Fix neighbours
@@ -169,11 +156,11 @@ public class TestWorld : MonoBehaviour, IDeformableTerrain {
         return new TerrainChunk(chunkSize, voxelSize, Instantiate(chunkMeshObjectPrefab, transform));
     }
 
-    private static void PoolCallbackResetChunk (ref TerrainChunk item) {
+    private static void PoolCallbackResetChunk (ref TerrainChunk chunk) {
         for (var side = 0; side < EnumUtil<CubeSide>.length; side++) {
-            item.hasNeighbourOnSide[side] = false;
-            item.hasSignChangeOnSide[side] = false;
-            item.neighbourKeys[side] = default;
+            chunk.hasNeighbourOnSide[side] = false;
+            chunk.hasSignChangeOnSide[side] = false;
+            chunk.neighbourKeys[side] = default;
         }
     }
 
