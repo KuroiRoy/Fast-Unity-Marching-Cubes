@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using GeneralUtils;
 using SkywardRay;
@@ -9,7 +11,9 @@ using WorldGeneration;
 
 namespace TerrainGeneration.TerrainUtils {
 
-public class TestWorld : MonoBehaviour, IDeformableTerrain {
+public class TestWorld : MonoBehaviour, IDeformableTerrain, IDisposable {
+
+    public static readonly List<IDisposable> disposeList = new List<IDisposable>();
 
     [SerializeField] private int chunkSize = 32;
     [SerializeField] private float voxelSize = 1;
@@ -20,9 +24,17 @@ public class TestWorld : MonoBehaviour, IDeformableTerrain {
 
     private int chunksWithSignChange;
     private readonly DisposablePool<TerrainChunk> chunkPool = new DisposablePool<TerrainChunk>();
-    private readonly Dictionary<ChunkKey, TerrainChunk> chunks = new Dictionary<ChunkKey, TerrainChunk>();
-    private readonly Queue<ChunkKey> chunksToRemove = new Queue<ChunkKey>();
-    private readonly Queue<ChunkKey> chunksToExpandFrom = new Queue<ChunkKey>();
+    private readonly ConcurrentDictionary<ChunkKey, TerrainChunk> chunks = new ConcurrentDictionary<ChunkKey, TerrainChunk>();
+
+    private void OnEnable () {
+        disposeList.Add(this);
+    }
+
+    private void OnDestroy () {
+        Dispose();
+
+        disposeList.Remove(this);
+    }
 
     private void Update () {
         if (chunksWithSignChange == 0 && chunks.Count == 0) {
@@ -33,69 +45,83 @@ public class TestWorld : MonoBehaviour, IDeformableTerrain {
     private void LateUpdate () {
         var playerPosition = (float3) playerTransform.position;
 
-        foreach (var (chunkKey, chunk) in chunks) {
-            chunk.UpdateJobs();
+        foreach (var chunk in chunks.Values) {
+            chunk.CompleteJobs();
 
-            if (chunk.hasBeenMarkedForRemoval) {
-                continue;
+            HandleRemovalOfChunk(chunk, playerPosition);
+
+            if (chunk.hasUpdatedDensities) {
+                HandleChunkSignChangeUpdate(chunk);
+                HandleExpansionFromChunk(chunk);
+
+                chunk.hasUpdatedDensities = false;
+                chunk.hasUpdatedSigns = false;
             }
-
-            if (chunk.hasUpdatedSigns) {
-                if (chunk.hasSignChangeOnAnySide) {
-                    chunksToExpandFrom.Enqueue(chunkKey);
-
-                    chunksWithSignChange++;
-                }
-                else {
-                    chunksWithSignChange--;
-                }
-            }
-            else if (chunksWithSignChange == 0 && chunk.hasUpdatedDensities) {
-                chunksToExpandFrom.Enqueue(chunkKey);
-            }
-
-            if (!chunk.hasBeenMarkedForRemoval && math.distance(playerPosition, chunk.position) > chunkDrawDistance * 1.5 * chunkSize) {
-                chunk.hasBeenMarkedForRemoval = true;
-
-                if (chunk.hasSignChangeOnAnySide) {
-                    chunksWithSignChange--;
-                }
-
-                chunksToRemove.Enqueue(chunkKey);
-            }
-
-            chunk.hasUpdatedDensities = false;
-            chunk.hasUpdatedSigns = false;
-        }
-
-        var chunksToRemoveCount = chunksToRemove.Count;
-        var chunksToExpandFromCount = chunksToExpandFrom.Count;
-
-        for (var i = 0; i < chunksToRemoveCount; i++) {
-            var chunkKey = chunksToRemove.Peek();
-            var chunk = chunks[chunkKey];
-
-            if (chunk.runningJobs == 0) {
-                chunk.meshObject.gameObject.SetActive(false);
-                
-                chunks.Remove(chunkKey);
-                chunksToRemove.Dequeue();
-            }
-        }
-
-        for (var i = 0; i < chunksToExpandFromCount; i++) {
-            var chunkKey = chunksToExpandFrom.Dequeue();
-
-            ExpandTerrainFromChunk(chunks[chunkKey]);
         }
     }
 
-    private void OnApplicationQuit () {
-        foreach (var chunk in chunks.Values) {
-            chunk.Dispose();
+    private void HandleChunkSignChangeUpdate (TerrainChunk chunk) {
+        if (!chunk.hasUpdatedSigns) {
+            return;
         }
 
-        chunkPool.Dispose();
+        if (chunk.hasSignChangeOnAnySide) {
+            chunksWithSignChange++;
+        }
+        else {
+            chunksWithSignChange--;
+        }
+    }
+
+    private void HandleExpansionFromChunk (TerrainChunk chunk) {
+        if (chunk.hasBeenMarkedForRemoval) {
+            return;
+        }
+        
+        if (chunksWithSignChange == 0) {
+            ExpandTerrainFromChunk(chunk);
+            return;
+        }
+
+        if (chunk.hasUpdatedSigns && chunk.hasSignChangeOnAnySide) {
+            ExpandTerrainFromChunk(chunk);
+        }
+    }
+
+    private void HandleRemovalOfChunk (TerrainChunk chunk, float3 playerPosition) {
+        if (chunk.hasBeenMarkedForRemoval) {
+            return;
+        }
+        
+        var isTooFarAway = math.distance(playerPosition, chunk.position) > chunkDrawDistance * 1.5 * chunkSize;
+        var isEmpty = chunksWithSignChange > 0 && !chunk.hasSignChangeOnAnySide;
+
+        if (!isTooFarAway && !isEmpty) {
+            return;
+        }
+
+        // Tell the neighbours this chunk no longer exists
+        foreach (var (sideIndex, side) in EnumUtil<CubeSide>.valuePairs) {
+            if (chunk.hasNeighbourOnSide[sideIndex]) {
+                var neighbourKey = chunk.neighbourKeys[sideIndex];
+                var neighbour = chunks[neighbourKey];
+
+                var flippedSideIndex = (int) side.Flip();
+
+                neighbour.hasNeighbourOnSide[flippedSideIndex] = false;
+                neighbour.neighbourKeys[flippedSideIndex] = default;
+            }
+        }
+
+        if (chunk.hasSignChangeOnAnySide) {
+            chunksWithSignChange--;
+        }
+
+        chunk.hasBeenMarkedForRemoval = true;
+        chunk.CompleteJobs();
+
+        chunks.TryRemove(chunk.key, out _);
+        chunkPool.AddItem(chunk);
     }
 
     public void DeformTerrain (IBrush brush, BrushOperation operation) {
@@ -103,7 +129,7 @@ public class TestWorld : MonoBehaviour, IDeformableTerrain {
 
         var minIndex = (int3) math.floor(bounds.min / chunkSize);
         var maxIndex = (int3) math.floor(bounds.max / chunkSize);
-        
+
         for (var x = minIndex.x; x <= maxIndex.x; x++) {
             for (var y = minIndex.y; y <= maxIndex.y; y++) {
                 for (var z = minIndex.z; z <= maxIndex.z; z++) {
@@ -130,7 +156,7 @@ public class TestWorld : MonoBehaviour, IDeformableTerrain {
             max = chunk.position + math.float3(chunk.size * chunk.voxelSize)
         };
 
-        chunks.Add(key, chunk);
+        chunks.TryAdd(key, chunk);
 
         chunk.ScheduleGenerateDensitiesJob(noiseSettings);
 
@@ -157,6 +183,11 @@ public class TestWorld : MonoBehaviour, IDeformableTerrain {
     }
 
     private static void PoolCallbackResetChunk (ref TerrainChunk chunk) {
+        chunk.hasBeenMarkedForRemoval = false;
+        chunk.hasUpdatedSigns = false;
+        chunk.hasUpdatedDensities = false;
+        chunk.hasSignChangeOnAnySide = false;
+
         for (var side = 0; side < EnumUtil<CubeSide>.length; side++) {
             chunk.hasNeighbourOnSide[side] = false;
             chunk.hasSignChangeOnSide[side] = false;
@@ -202,6 +233,14 @@ public class TestWorld : MonoBehaviour, IDeformableTerrain {
         var chunkOrigin = (float3) transform.position / chunkSize;
 
         return new ChunkKey {origin = (int3) math.floor(chunkOrigin)};
+    }
+
+    public void Dispose () {
+        foreach (var chunk in chunks.Values) {
+            chunk.Dispose();
+        }
+
+        chunkPool.Dispose();
     }
 
 }

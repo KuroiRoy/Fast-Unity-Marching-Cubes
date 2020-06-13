@@ -1,4 +1,5 @@
-﻿using UnityEngine;
+﻿using TerrainGeneration.TerrainUtils;
+using UnityEngine;
 using WorldGeneration;
 
 namespace UnityTemplateProjects {
@@ -103,6 +104,10 @@ public class SimpleCameraController : MonoBehaviour {
     private void Update () {
         // Exit Sample  
         if (Input.GetKey(KeyCode.Escape)) {
+            foreach (var disposable in TestWorld.disposeList) {
+                disposable.Dispose();
+            }
+            
             Application.Quit();
 #if UNITY_EDITOR
             UnityEditor.EditorApplication.isPlaying = false;
@@ -111,6 +116,10 @@ public class SimpleCameraController : MonoBehaviour {
         
         // Exit Sample and destroy saves
         if (Input.GetKey(KeyCode.RightBracket) && Input.GetKey(KeyCode.Escape)) {
+            foreach (var disposable in TestWorld.disposeList) {
+                disposable.Dispose();
+            }
+            
             ChunkSaveData.DeleteAll();
             
             Application.Quit();

@@ -20,7 +20,7 @@ public struct MarchingCubesJob : IJobParallelFor, IMeshDataJob {
     public static NativeArray<Vector3> CreateVertexBuffer (int chunkSize) {
         return new NativeArray<Vector3>(
             chunkSize.Pow(3) * VERTICES_PER_TRIANGLE * MAXIMUM_AMOUNT_OF_TRIANGLES_PER_VOXEL,
-            Allocator.Persistent,
+            Allocator.TempJob,
             NativeArrayOptions.UninitializedMemory
         );
     }
@@ -28,7 +28,7 @@ public struct MarchingCubesJob : IJobParallelFor, IMeshDataJob {
     public static NativeArray<int> CreateTriangleIndexBuffer (int chunkSize) {
         return new NativeArray<int>(
             chunkSize.Pow(3) * VERTICES_PER_TRIANGLE * MAXIMUM_AMOUNT_OF_TRIANGLES_PER_VOXEL, 
-            Allocator.Persistent, 
+            Allocator.TempJob, 
             NativeArrayOptions.UninitializedMemory
         );
     }
