@@ -38,7 +38,7 @@ RenderSettings:
   m_ReflectionIntensity: 1
   m_CustomReflection: {fileID: 0}
   m_Sun: {fileID: 705507994}
-  m_IndirectSpecularColor: {r: 0.44657874, g: 0.49641275, b: 0.5748172, a: 1}
+  m_IndirectSpecularColor: {r: 0.44657844, g: 0.49641222, b: 0.57481694, a: 1}
   m_UseRadianceAmbientProbe: 0
 --- !u!157 &3
 LightmapSettings:
@@ -461,8 +461,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   chunkSize: 32
-  voxelSize: 1
-  chunkDrawDistance: 10
+  voxelSize: 0.25
+  chunkDrawDistance: 5
   playerTransform: {fileID: 963194228}
   chunkMeshObjectPrefab: {fileID: 5688686567056324017, guid: e0543e6c9c9c54978b929b315c0b7148,
     type: 3}

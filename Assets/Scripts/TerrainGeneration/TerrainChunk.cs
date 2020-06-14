@@ -71,6 +71,7 @@ public class TerrainChunk : IDisposable {
             brush = (SphereBrush) brush,
             operation = brushOperation,
             size = size + 1,
+            voxelSize = voxelSize,
             densityMap = nativeCollectionStash.densityMap,
             chunkPosition = position,
             signTrackers = new NativeArray<int>(EnumUtil<CubeSide>.length, Allocator.TempJob),
@@ -98,6 +99,7 @@ public class TerrainChunk : IDisposable {
             octaves = noiseSettings.oct,
             offset = position,
             size = size + 1,
+            voxelSize = voxelSize,
             signTrackers = new NativeArray<int>(EnumUtil<CubeSide>.length, Allocator.TempJob),
         };
 
@@ -161,6 +163,7 @@ public class TerrainChunk : IDisposable {
         var job = new MarchingCubesJob {
             isolevel = 0f,
             chunkSize = size,
+            voxelSize = voxelSize,
             densities = nativeCollectionStash.densityMap,
             vertexCounter = nativeCollectionStash.vertexCounter,
             vertexBuffer = MarchingCubesJob.CreateVertexBuffer(size),

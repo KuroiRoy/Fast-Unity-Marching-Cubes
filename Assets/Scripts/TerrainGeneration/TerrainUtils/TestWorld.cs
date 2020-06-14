@@ -119,6 +119,7 @@ public class TestWorld : MonoBehaviour, IDeformableTerrain, IDisposable {
 
         chunk.hasBeenMarkedForRemoval = true;
         chunk.CompleteJobs();
+        chunk.meshObject.gameObject.SetActive(false);
 
         chunks.TryRemove(chunk.key, out _);
         chunkPool.AddItem(chunk);
@@ -127,8 +128,8 @@ public class TestWorld : MonoBehaviour, IDeformableTerrain, IDisposable {
     public void DeformTerrain (IBrush brush, BrushOperation operation) {
         var bounds = brush.GetBounds();
 
-        var minIndex = (int3) math.floor(bounds.min / chunkSize);
-        var maxIndex = (int3) math.floor(bounds.max / chunkSize);
+        var minIndex = (int3) math.floor(bounds.min / (chunkSize * voxelSize));
+        var maxIndex = (int3) math.floor(bounds.max / (chunkSize * voxelSize));
 
         for (var x = minIndex.x; x <= maxIndex.x; x++) {
             for (var y = minIndex.y; y <= maxIndex.y; y++) {
@@ -147,7 +148,7 @@ public class TestWorld : MonoBehaviour, IDeformableTerrain, IDisposable {
         }
 
         var chunk = chunkPool.GetItem(PoolCallbackCreateNewChunk, PoolCallbackResetChunk);
-        chunk.position = key.origin * chunkSize;
+        chunk.position = (float3) key.origin * chunkSize * voxelSize;
         chunk.key = key;
         chunk.meshObject.gameObject.name = $"Chunk {key.origin}";
         chunk.meshObject.transform.position = chunk.position;
@@ -209,7 +210,7 @@ public class TestWorld : MonoBehaviour, IDeformableTerrain, IDisposable {
 
             var newChunkOrigin = GetNeighbourChunkOrigin(chunk, (CubeSide) side);
 
-            if (math.distance(playerTransform.position, newChunkOrigin * chunkSize) > chunkDrawDistance * chunkSize) {
+            if (math.distance(playerTransform.position, (float3) newChunkOrigin * (chunkSize * voxelSize)) > chunkDrawDistance * (chunkSize * voxelSize)) {
                 continue;
             }
 
@@ -230,7 +231,7 @@ public class TestWorld : MonoBehaviour, IDeformableTerrain, IDisposable {
     }
 
     private ChunkKey GetKeyFromTransformPosition (Transform transform) {
-        var chunkOrigin = (float3) transform.position / chunkSize;
+        var chunkOrigin = (float3) transform.position / (chunkSize * voxelSize);
 
         return new ChunkKey {origin = (int3) math.floor(chunkOrigin)};
     }

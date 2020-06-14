@@ -1,7 +1,4 @@
-using System;
 using SkywardRay;
-using SkywardRay.Utility;
-using TerrainGeneration.TerrainUtils;
 using Unity.Burst;
 using Unity.Collections;
 using Unity.Jobs;
@@ -20,6 +17,7 @@ public struct GenerateDensitiesJob : IJobParallelFor, IDensityJob {
     [ReadOnly] public float frequency;
     [ReadOnly] public int octaves;
     [ReadOnly] public int size;
+    [ReadOnly] public float voxelSize;
 
     [NativeDisableParallelForRestriction, WriteOnly]
     public NativeArray<float> noiseMap;
@@ -32,7 +30,7 @@ public struct GenerateDensitiesJob : IJobParallelFor, IDensityJob {
 
     public void Execute (int index) {
         var positionInChunk = new int3(index / (size * size), index / size % size, index % size);
-        var density = FinalNoise(positionInChunk);
+        var density = FinalNoise((float3) positionInChunk * voxelSize);
 
         TrackSign(positionInChunk, density);
 

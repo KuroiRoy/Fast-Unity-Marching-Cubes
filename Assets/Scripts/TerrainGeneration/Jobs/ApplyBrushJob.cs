@@ -1,8 +1,6 @@
 using System;
 using SkywardRay;
-using SkywardRay.Utility;
 using TerrainGeneration.Brushes;
-using TerrainGeneration.TerrainUtils;
 using Unity.Burst;
 using Unity.Collections;
 using Unity.Jobs;
@@ -22,6 +20,8 @@ public struct ApplyBrushJob<TBrush> : IJobParallelFor, IDensityJob where TBrush 
     //Chunk size + 1 to account for borders
     [ReadOnly] public int size;
 
+    [ReadOnly] public float voxelSize;
+
     [ReadOnly] public TBrush brush;
 
     [ReadOnly] public BrushOperation operation;
@@ -33,7 +33,7 @@ public struct ApplyBrushJob<TBrush> : IJobParallelFor, IDensityJob where TBrush 
     public NativeArray<int> signTrackers;
 
     public void Execute (int index) {
-        var position = chunkPosition + new float3(index / (size * size), index / size % size, index % size);
+        var position = chunkPosition + new float3(index / (size * size), index / size % size, index % size) * voxelSize;
 
         var distanceToShape = brush.GetDistanceToShape(position);
 
