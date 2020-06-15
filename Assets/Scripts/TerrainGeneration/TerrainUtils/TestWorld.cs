@@ -22,6 +22,8 @@ public class TestWorld : MonoBehaviour, IDeformableTerrain, IDisposable {
     [SerializeField] private MeshObject chunkMeshObjectPrefab;
     [SerializeField] private NoiseSettings noiseSettings;
 
+    private bool ShouldKeepEmptyChunks => chunksWithSignChange == 0;
+
     private int chunksWithSignChange;
     private readonly DisposablePool<TerrainChunk> chunkPool = new DisposablePool<TerrainChunk>();
     private readonly ConcurrentDictionary<ChunkKey, TerrainChunk> chunks = new ConcurrentDictionary<ChunkKey, TerrainChunk>();
@@ -49,10 +51,10 @@ public class TestWorld : MonoBehaviour, IDeformableTerrain, IDisposable {
             chunk.CompleteJobs();
 
             HandleRemovalOfChunk(chunk, playerPosition);
+            ExpandTerrainFromChunk(chunk);
 
             if (chunk.hasUpdatedDensities) {
                 HandleChunkSignChangeUpdate(chunk);
-                HandleExpansionFromChunk(chunk);
 
                 chunk.hasUpdatedDensities = false;
                 chunk.hasUpdatedSigns = false;
@@ -73,28 +75,13 @@ public class TestWorld : MonoBehaviour, IDeformableTerrain, IDisposable {
         }
     }
 
-    private void HandleExpansionFromChunk (TerrainChunk chunk) {
-        if (chunk.hasBeenMarkedForRemoval) {
-            return;
-        }
-        
-        if (chunksWithSignChange == 0) {
-            ExpandTerrainFromChunk(chunk);
-            return;
-        }
-
-        if (chunk.hasUpdatedSigns && chunk.hasSignChangeOnAnySide) {
-            ExpandTerrainFromChunk(chunk);
-        }
-    }
-
     private void HandleRemovalOfChunk (TerrainChunk chunk, float3 playerPosition) {
         if (chunk.hasBeenMarkedForRemoval) {
             return;
         }
         
         var isTooFarAway = math.distance(playerPosition, chunk.position) > chunkDrawDistance * 1.5 * chunkSize;
-        var isEmpty = chunksWithSignChange > 0 && !chunk.hasSignChangeOnAnySide;
+        var isEmpty = !chunk.hasSignChangeOnAnySide && !ShouldKeepEmptyChunks;
 
         if (!isTooFarAway && !isEmpty) {
             return;
@@ -105,11 +92,10 @@ public class TestWorld : MonoBehaviour, IDeformableTerrain, IDisposable {
             if (chunk.hasNeighbourOnSide[sideIndex]) {
                 var neighbourKey = chunk.neighbourKeys[sideIndex];
                 var neighbour = chunks[neighbourKey];
-
                 var flippedSideIndex = (int) side.Flip();
 
-                neighbour.hasNeighbourOnSide[flippedSideIndex] = false;
-                neighbour.neighbourKeys[flippedSideIndex] = default;
+                chunk.ClearNeighbour(sideIndex);
+                neighbour.ClearNeighbour(flippedSideIndex);
             }
         }
 
@@ -162,18 +148,13 @@ public class TestWorld : MonoBehaviour, IDeformableTerrain, IDisposable {
         chunk.ScheduleGenerateDensitiesJob(noiseSettings);
 
         // Fix neighbours
-        foreach (var (sideIndex, side) in EnumUtil<CubeSide>.valuePairs) {
-            var neighbourKey = new ChunkKey {origin = GetNeighbourChunkOrigin(chunk, side)};
+        foreach (var side in EnumUtil<CubeSide>.valuePairs) {
+            var neighbourKey = new ChunkKey {origin = GetNeighbourChunkOrigin(chunk, side.value)};
             if (!chunks.TryGetValue(neighbourKey, out var neighbour)) {
                 continue;
             }
-
-            chunk.hasNeighbourOnSide[sideIndex] = true;
-            chunk.neighbourKeys[sideIndex] = neighbourKey;
-
-            var flippedSideIndex = (int) side.Flip();
-            neighbour.hasNeighbourOnSide[flippedSideIndex] = true;
-            neighbour.neighbourKeys[flippedSideIndex] = chunk.key;
+            
+            chunk.SetNeighbour(neighbour, side);
         }
 
         return chunk;
@@ -197,6 +178,10 @@ public class TestWorld : MonoBehaviour, IDeformableTerrain, IDisposable {
     }
 
     private void ExpandTerrainFromChunk (TerrainChunk chunk) {
+        if (!chunk.canExpandToNeighbours) {
+            return;
+        }
+        
         foreach (var side in EnumUtil<CubeSide>.intValues) {
             if (chunk.hasNeighbourOnSide[side]) {
                 continue;

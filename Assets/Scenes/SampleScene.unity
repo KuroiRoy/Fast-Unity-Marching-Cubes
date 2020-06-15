@@ -461,7 +461,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   chunkSize: 32
-  voxelSize: 0.25
+  voxelSize: 1
   chunkDrawDistance: 5
   playerTransform: {fileID: 963194228}
   chunkMeshObjectPrefab: {fileID: 5688686567056324017, guid: e0543e6c9c9c54978b929b315c0b7148,

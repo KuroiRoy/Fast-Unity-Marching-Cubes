@@ -25,6 +25,7 @@ public class TerrainChunk : IDisposable {
     public readonly int size;
     public Bounds bounds;
     public readonly float voxelSize;
+    public bool canExpandToNeighbours;
     public readonly bool[] hasSignChangeOnSide = new bool[EnumUtil<CubeSide>.length];
     public readonly bool[] hasNeighbourOnSide = new bool[EnumUtil<CubeSide>.length];
     public readonly ChunkKey[] neighbourKeys = new ChunkKey[EnumUtil<CubeSide>.length];
@@ -52,6 +53,57 @@ public class TerrainChunk : IDisposable {
         hasBeenMarkedForRemoval = true;
 
         CompleteRunningJobs();
+    }
+
+    public void ClearNeighbour (int sideIndex) {
+        hasNeighbourOnSide[sideIndex] = false;
+        neighbourKeys[sideIndex] = default;
+        
+        TrackExpandability();
+    }
+
+    public void SetNeighbour (TerrainChunk neighbour, (int index, CubeSide value) side) {
+        hasNeighbourOnSide[side.index] = true;
+        neighbourKeys[side.index] = neighbour.key;
+
+        var flippedSideIndex = (int) side.value.Flip();
+        neighbour.hasNeighbourOnSide[flippedSideIndex] = true;
+        neighbour.neighbourKeys[flippedSideIndex] = key;
+        
+        TrackExpandability();
+    }
+
+    private void TrackSigns (NativeArray<int> signTrackers) {
+        // The length and width of each side
+        var dataPointsPerSide = (size + 1) * (size + 1);
+
+        var hadSignChangeBeforeUpdate = hasSignChangeOnAnySide;
+
+        hasSignChangeOnAnySide = false;
+
+        foreach (var side in EnumUtil<CubeSide>.intValues) {
+            var hasSignChange = math.abs(signTrackers[side]) != dataPointsPerSide;
+
+            hasSignChangeOnSide[side] = hasSignChange;
+
+            hasSignChangeOnAnySide = hasSignChangeOnAnySide || hasSignChange;
+        }
+
+        if (hadSignChangeBeforeUpdate != hasSignChangeOnAnySide) {
+            hasUpdatedSigns = true;
+        }
+
+        hasUpdatedDensities = true;
+
+        TrackExpandability();
+    }
+
+    private void TrackExpandability () {
+        canExpandToNeighbours = false;
+
+        foreach (var side in EnumUtil<CubeSide>.intValues) {
+            canExpandToNeighbours = canExpandToNeighbours || hasSignChangeOnSide[side] && !hasNeighbourOnSide[side];
+        }
     }
 
     #region Jobs
@@ -119,28 +171,9 @@ public class TerrainChunk : IDisposable {
 
         var signTrackers = jobs.densityJob.GetSignTrackers();
 
-        // The length and width of each side
-        var dataPointsPerSide = (size + 1) * (size + 1);
-
-        var hadSignChangeBeforeUpdate = hasSignChangeOnAnySide;
-
-        hasSignChangeOnAnySide = false;
-
-        foreach (var side in EnumUtil<CubeSide>.intValues) {
-            var hasSignChange = math.abs(signTrackers[side]) != dataPointsPerSide;
-
-            hasSignChangeOnSide[side] = hasSignChange;
-
-            hasSignChangeOnAnySide = hasSignChangeOnAnySide || hasSignChange;
-        }
-
+        TrackSigns(signTrackers);
+        
         signTrackers.Dispose();
-
-        if (hadSignChangeBeforeUpdate != hasSignChangeOnAnySide) {
-            hasUpdatedSigns = true;
-        }
-
-        hasUpdatedDensities = true;
 
         ScheduleSurfaceExtractionJob();
     }
