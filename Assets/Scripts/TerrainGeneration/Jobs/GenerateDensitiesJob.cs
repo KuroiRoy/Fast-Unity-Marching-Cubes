@@ -20,7 +20,7 @@ public struct GenerateDensitiesJob : IJobParallelFor, IDensityJob {
     [ReadOnly] public float voxelSize;
 
     [NativeDisableParallelForRestriction, WriteOnly]
-    public NativeArray<float> noiseMap;
+    public NativeArray<float> densityMap;
 
     /// <summary>
     /// The amount of positive or negative densities per side
@@ -34,7 +34,7 @@ public struct GenerateDensitiesJob : IJobParallelFor, IDensityJob {
 
         TrackSign(positionInChunk, density);
 
-        noiseMap[index] = density;
+        densityMap[index] = density;
     }
 
     private void TrackSign (int3 index, float density) {

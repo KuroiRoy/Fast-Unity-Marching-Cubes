@@ -4,6 +4,7 @@ using SkywardRay;
 using SkywardRay.Utility;
 using TerrainGeneration.Brushes;
 using TerrainGeneration.Jobs;
+using TerrainGeneration.TerrainUtils;
 using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
@@ -15,6 +16,7 @@ namespace TerrainGeneration {
 
 public class TerrainChunk : IDisposable {
 
+    public const int CHUNK_SIZE = 20;
     private static readonly VertexAttributeDescriptor[] meshVertexLayout = {new VertexAttributeDescriptor(VertexAttribute.Position)};
 
     public int VertexCount => nativeCollectionStash.vertexCounter.Count * 3;
@@ -32,9 +34,11 @@ public class TerrainChunk : IDisposable {
     public bool hasSignChangeOnAnySide;
 
     public int runningJobs;
+    public int framesSinceJobScheduled;
     public bool hasUpdatedSigns;
     public bool hasUpdatedDensities;
     public bool hasBeenMarkedForRemoval;
+    public bool hasBeenDeformed;
 
     private readonly ChunkNativeCollectionStash nativeCollectionStash;
     private ChunkJobs jobs;
@@ -60,6 +64,24 @@ public class TerrainChunk : IDisposable {
         neighbourKeys[sideIndex] = default;
         
         TrackExpandability();
+    }
+
+    public bool Load (ChunkSaveData saveData) {
+        if (saveData.densityMap.Length != nativeCollectionStash.densityMap.Length) {
+            Debug.LogError($"Size of loaded chunk {key.origin} does not match the current chunk size");
+            return false;
+        }
+        
+        nativeCollectionStash.densityMap.CopyFrom(saveData.densityMap);
+        
+        ScheduleRefreshDensitiesJob();
+        return true;
+    }
+
+    public void Save (ChunkSaveData saveData) {
+        saveData.densityMap = new float[nativeCollectionStash.densityMap.Length];
+        
+        nativeCollectionStash.densityMap.CopyToFast(saveData.densityMap);
     }
 
     public void SetNeighbour (TerrainChunk neighbour, (int index, CubeSide value) side) {
@@ -115,6 +137,8 @@ public class TerrainChunk : IDisposable {
             return;
         }
 
+        hasBeenDeformed = true;
+
         if (runningJobs > 0) {
             CompleteRunningJobs();
         }
@@ -144,7 +168,7 @@ public class TerrainChunk : IDisposable {
         }
 
         var job = new GenerateDensitiesJob {
-            noiseMap = nativeCollectionStash.densityMap,
+            densityMap = nativeCollectionStash.densityMap,
             surfaceLevel = noiseSettings.surfaceLevel,
             frequency = noiseSettings.freq,
             amplitude = noiseSettings.ampl,
@@ -152,6 +176,26 @@ public class TerrainChunk : IDisposable {
             offset = position,
             size = size + 1,
             voxelSize = voxelSize,
+            signTrackers = new NativeArray<int>(EnumUtil<CubeSide>.length, Allocator.TempJob),
+        };
+
+        jobs.densityJob = job;
+        jobs.densityHandle = ScheduleParallelJob((size + 1).Pow(3), job);
+        jobs.isDensityJobRunning = true;
+    }
+
+    private void ScheduleRefreshDensitiesJob () {
+        if (hasBeenMarkedForRemoval) {
+            return;
+        }
+
+        if (runningJobs > 0) {
+            CompleteRunningJobs();
+        }
+
+        var job = new RefreshDensitiesJob() {
+            densityMap = nativeCollectionStash.densityMap,
+            size = size + 1,
             signTrackers = new NativeArray<int>(EnumUtil<CubeSide>.length, Allocator.TempJob),
         };
 
@@ -267,6 +311,7 @@ public class TerrainChunk : IDisposable {
 
     private JobHandle ScheduleJob<T> (T job) where T : struct, IJob {
         runningJobs++;
+        framesSinceJobScheduled = 0;
 
         return jobs.newestJobHandle = job.Schedule(jobs.newestJobHandle);
     }
@@ -275,6 +320,7 @@ public class TerrainChunk : IDisposable {
         const int batchSize = 64;
 
         runningJobs++;
+        framesSinceJobScheduled = 0;
 
         return jobs.newestJobHandle = job.Schedule(size, batchSize, jobs.newestJobHandle);
     }

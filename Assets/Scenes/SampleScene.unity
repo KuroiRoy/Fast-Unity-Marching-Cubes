@@ -427,6 +427,7 @@ GameObject:
   m_Component:
   - component: {fileID: 1730994061}
   - component: {fileID: 1730994062}
+  - component: {fileID: 1730994060}
   m_Layer: 0
   m_Name: World
   m_TagString: Untagged
@@ -434,6 +435,18 @@ GameObject:
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
   m_IsActive: 1
+--- !u!114 &1730994060
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1730994059}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1c1887f99db34ca9812c48746bd4be79, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
 --- !u!4 &1730994061
 Transform:
   m_ObjectHideFlags: 0
@@ -460,7 +473,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 0d307e80b9274776a8089d8486d37167, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  chunkSize: 32
   voxelSize: 1
   chunkDrawDistance: 5
   playerTransform: {fileID: 963194228}

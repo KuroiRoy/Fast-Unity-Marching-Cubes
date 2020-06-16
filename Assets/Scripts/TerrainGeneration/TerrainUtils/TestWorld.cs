@@ -15,7 +15,6 @@ public class TestWorld : MonoBehaviour, IDeformableTerrain, IDisposable {
 
     public static readonly List<IDisposable> disposeList = new List<IDisposable>();
 
-    [SerializeField] private int chunkSize = 32;
     [SerializeField] private float voxelSize = 1;
     [SerializeField] private float chunkDrawDistance = 16;
     [SerializeField] private Transform playerTransform;
@@ -25,7 +24,7 @@ public class TestWorld : MonoBehaviour, IDeformableTerrain, IDisposable {
     private bool ShouldKeepEmptyChunks => chunksWithSignChange == 0;
 
     private int chunksWithSignChange;
-    private readonly DisposablePool<TerrainChunk> chunkPool = new DisposablePool<TerrainChunk>();
+    private readonly Pool<TerrainChunk> chunkPool = new Pool<TerrainChunk>();
     private readonly ConcurrentDictionary<ChunkKey, TerrainChunk> chunks = new ConcurrentDictionary<ChunkKey, TerrainChunk>();
 
     private void OnEnable () {
@@ -42,14 +41,14 @@ public class TestWorld : MonoBehaviour, IDeformableTerrain, IDisposable {
         if (chunksWithSignChange == 0 && chunks.Count == 0) {
             GetOrCreateChunkByKey(GetKeyFromTransformPosition(playerTransform));
         }
-    }
-
-    private void LateUpdate () {
+        
         var playerPosition = (float3) playerTransform.position;
-
+        
         foreach (var chunk in chunks.Values) {
-            chunk.CompleteJobs();
-
+            if (chunk.runningJobs > 0) {
+                continue;
+            }
+            
             HandleRemovalOfChunk(chunk, playerPosition);
             ExpandTerrainFromChunk(chunk);
 
@@ -59,6 +58,18 @@ public class TestWorld : MonoBehaviour, IDeformableTerrain, IDisposable {
                 chunk.hasUpdatedDensities = false;
                 chunk.hasUpdatedSigns = false;
             }
+        }
+    }
+
+    private void LateUpdate () {
+        foreach (var chunk in chunks.Values) {
+            chunk.framesSinceJobScheduled++;
+            
+            if (FrameTimer.TimeElapsedThisFrame > 13 && chunk.framesSinceJobScheduled < 3) {
+                continue;
+            }
+            
+            chunk.CompleteJobs();
         }
     }
 
@@ -79,8 +90,8 @@ public class TestWorld : MonoBehaviour, IDeformableTerrain, IDisposable {
         if (chunk.hasBeenMarkedForRemoval) {
             return;
         }
-        
-        var isTooFarAway = math.distance(playerPosition, chunk.position) > chunkDrawDistance * 1.5 * chunkSize;
+
+        var isTooFarAway = math.distance(playerPosition, chunk.position) > chunkDrawDistance * 1.5 * TerrainChunk.CHUNK_SIZE;
         var isEmpty = !chunk.hasSignChangeOnAnySide && !ShouldKeepEmptyChunks;
 
         if (!isTooFarAway && !isEmpty) {
@@ -107,6 +118,16 @@ public class TestWorld : MonoBehaviour, IDeformableTerrain, IDisposable {
         chunk.CompleteJobs();
         chunk.meshObject.gameObject.SetActive(false);
 
+        if (chunk.hasBeenDeformed) {
+            var saveData = new ChunkSaveData {
+                fileKey = "world",
+                chunkKey = chunk.key,
+            };
+            
+            chunk.Save(saveData);
+            ChunkSaveData.Save(saveData);
+        }
+
         chunks.TryRemove(chunk.key, out _);
         chunkPool.AddItem(chunk);
     }
@@ -114,8 +135,8 @@ public class TestWorld : MonoBehaviour, IDeformableTerrain, IDisposable {
     public void DeformTerrain (IBrush brush, BrushOperation operation) {
         var bounds = brush.GetBounds();
 
-        var minIndex = (int3) math.floor(bounds.min / (chunkSize * voxelSize));
-        var maxIndex = (int3) math.floor(bounds.max / (chunkSize * voxelSize));
+        var minIndex = (int3) math.floor(bounds.min / (TerrainChunk.CHUNK_SIZE * voxelSize));
+        var maxIndex = (int3) math.floor(bounds.max / (TerrainChunk.CHUNK_SIZE * voxelSize));
 
         for (var x = minIndex.x; x <= maxIndex.x; x++) {
             for (var y = minIndex.y; y <= maxIndex.y; y++) {
@@ -134,7 +155,7 @@ public class TestWorld : MonoBehaviour, IDeformableTerrain, IDisposable {
         }
 
         var chunk = chunkPool.GetItem(PoolCallbackCreateNewChunk, PoolCallbackResetChunk);
-        chunk.position = (float3) key.origin * chunkSize * voxelSize;
+        chunk.position = (float3) key.origin * TerrainChunk.CHUNK_SIZE * voxelSize;
         chunk.key = key;
         chunk.meshObject.gameObject.name = $"Chunk {key.origin}";
         chunk.meshObject.transform.position = chunk.position;
@@ -145,7 +166,16 @@ public class TestWorld : MonoBehaviour, IDeformableTerrain, IDisposable {
 
         chunks.TryAdd(key, chunk);
 
-        chunk.ScheduleGenerateDensitiesJob(noiseSettings);
+        var loadedData = ChunkSaveData.Load("world", key);
+        var dataLoadedSuccesfully = false;
+        
+        if (loadedData != null) {
+            dataLoadedSuccesfully = chunk.Load(loadedData);
+        }
+        
+        if (!dataLoadedSuccesfully) {
+            chunk.ScheduleGenerateDensitiesJob(noiseSettings);
+        }
 
         // Fix neighbours
         foreach (var side in EnumUtil<CubeSide>.valuePairs) {
@@ -153,7 +183,7 @@ public class TestWorld : MonoBehaviour, IDeformableTerrain, IDisposable {
             if (!chunks.TryGetValue(neighbourKey, out var neighbour)) {
                 continue;
             }
-            
+
             chunk.SetNeighbour(neighbour, side);
         }
 
@@ -161,7 +191,7 @@ public class TestWorld : MonoBehaviour, IDeformableTerrain, IDisposable {
     }
 
     private TerrainChunk PoolCallbackCreateNewChunk () {
-        return new TerrainChunk(chunkSize, voxelSize, Instantiate(chunkMeshObjectPrefab, transform));
+        return new TerrainChunk(TerrainChunk.CHUNK_SIZE, voxelSize, Instantiate(chunkMeshObjectPrefab, transform));
     }
 
     private static void PoolCallbackResetChunk (ref TerrainChunk chunk) {
@@ -181,7 +211,7 @@ public class TestWorld : MonoBehaviour, IDeformableTerrain, IDisposable {
         if (!chunk.canExpandToNeighbours) {
             return;
         }
-        
+
         foreach (var side in EnumUtil<CubeSide>.intValues) {
             if (chunk.hasNeighbourOnSide[side]) {
                 continue;
@@ -195,7 +225,8 @@ public class TestWorld : MonoBehaviour, IDeformableTerrain, IDisposable {
 
             var newChunkOrigin = GetNeighbourChunkOrigin(chunk, (CubeSide) side);
 
-            if (math.distance(playerTransform.position, (float3) newChunkOrigin * (chunkSize * voxelSize)) > chunkDrawDistance * (chunkSize * voxelSize)) {
+            if (math.distance(playerTransform.position, (float3) newChunkOrigin * (TerrainChunk.CHUNK_SIZE * voxelSize)) >
+                chunkDrawDistance * (TerrainChunk.CHUNK_SIZE * voxelSize)) {
                 continue;
             }
 
@@ -216,7 +247,7 @@ public class TestWorld : MonoBehaviour, IDeformableTerrain, IDisposable {
     }
 
     private ChunkKey GetKeyFromTransformPosition (Transform transform) {
-        var chunkOrigin = (float3) transform.position / (chunkSize * voxelSize);
+        var chunkOrigin = (float3) transform.position / (TerrainChunk.CHUNK_SIZE * voxelSize);
 
         return new ChunkKey {origin = (int3) math.floor(chunkOrigin)};
     }
@@ -226,7 +257,9 @@ public class TestWorld : MonoBehaviour, IDeformableTerrain, IDisposable {
             chunk.Dispose();
         }
 
-        chunkPool.Dispose();
+        foreach (var chunk in chunkPool.items) {
+            chunk.Dispose();
+        }
     }
 
 }

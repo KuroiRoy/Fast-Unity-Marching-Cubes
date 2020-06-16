@@ -1,9 +1,8 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 
 namespace GeneralUtils {
 
-public class DisposablePool<TItem> : IDisposable where TItem : IDisposable {
+public class Pool<TItem> {
 
     /// <summary>
     /// Use this delegate to specify how a new item should be created
@@ -15,9 +14,9 @@ public class DisposablePool<TItem> : IDisposable where TItem : IDisposable {
     /// </summary>
     public delegate void ResetItem (ref TItem item);
 
-    private readonly Queue<TItem> items;
+    public readonly Queue<TItem> items;
 
-    public DisposablePool (int initialCapacity = 200) {
+    public Pool (int initialCapacity = 200) {
         items = new Queue<TItem>(initialCapacity);
     }
 
@@ -38,12 +37,6 @@ public class DisposablePool<TItem> : IDisposable where TItem : IDisposable {
         resetItem?.Invoke(ref item);
         
         return item;
-    }
-
-    public void Dispose () {
-        foreach (var item in items) {
-            item.Dispose();
-        }
     }
 
 }

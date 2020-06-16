@@ -58,24 +58,7 @@ namespace WorldGeneration
     }
     public static class Utils
     {
-        public static unsafe void CopyToFast<T>(this NativeSlice<T> source, T[] target) where T : struct
-        {
-            if (target == null)
-            {
-                throw new NullReferenceException(nameof(target) + " is null");
-            }
-
-            var nativeArrayLength = source.Length;
-            if (target.Length < nativeArrayLength)
-            {
-                throw new IndexOutOfRangeException(nameof(target) + " is shorter than " + nameof(source));
-            }
-
-            var byteLength = source.Length * Marshal.SizeOf(default(T));
-            var managedBuffer = UnsafeUtility.AddressOf(ref target[0]);
-            var nativeBuffer = source.GetUnsafePtr();
-            Buffer.MemoryCopy(nativeBuffer, managedBuffer, byteLength, byteLength);
-        }
+        
         public static int3 FloorToMultipleOfX(this int3 n, int x)
         {
             return (int3)(math.floor(n / x) * x);
